@@ -230,6 +230,27 @@ class Kraken(API):
         for order_id, order in data['result'].items():
             return Kraken._order_status(order_id, order)
 
+    def closed_orders(self, start=None, end=None):
+        params = {}
+        if start:
+            params['start'] = self._timestamp(start).timestamp()
+        if end:
+            params['end'] = self._timestamp(end).timestamp()
+
+        data = self._post_private('/private/ClosedOrders', None)
+        if len(data['error']) != 0:
+            return data
+
+        ret = []
+        from pprint import pprint
+        for status, orders in data['result'].items():
+            if status == 'count':
+                continue
+            for order_id, order in orders.items():
+                ret.append(Kraken._order_status(order_id, order))
+
+        return ret
+
     def get_trades_history(self, symbol: str, start=None, end=None):
         params = {}
 
@@ -298,3 +319,13 @@ class Kraken(API):
             return data
         else:
             return self.order_status(order_id)
+
+    def wait_for_order_closed(self, order_id, timeout=None):
+        start = time.time()
+        while True:
+            for order in self.closed_orders():
+                if order['order_id'] == order_id:
+                    return True
+            if timeout and time.time() - start > timeout:
+                raise TimeoutError(f"Timeout waiting for order to close: {order_id}")
+            time.sleep(1)
